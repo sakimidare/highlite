@@ -14,7 +14,7 @@
 //! ## Example
 //!
 //! ```bash
-//! hilite --config rules.yaml file.txt
+//! hilite --config rules.yaml --file file.txt
 //!
 //! cat file.txt | hilite --config rules.yaml
 //! ```
