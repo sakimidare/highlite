@@ -4,8 +4,6 @@ hilite 是一个用 Rust 编写的高性能、基于规则的命令行（CLI）�
 
 它采用逐行读取的方式，并使用 ANSI 转义码对匹配内容进行高亮显示，非常适合处理大文件、流式输入以及 Unix 风格的管道操作。
 
----
-
 ## 特性
 
 - **高性能**：启动时将所有规则编译为单个正则表达式。
@@ -15,30 +13,37 @@ hilite 是一个用 Rust 编写的高性能、基于规则的命令行（CLI）�
 - **专为流式设计**：适用于标准输入、管道和大文件。
 - **内存优化**：在处理过程中尽量减少内存分配。
 
----
-
 ## 安装
 
 ### 通过 crates.io 安装
+```bash
 cargo install hilite
+```
 
 ### 从源码安装
+```bash
 git clone https://github.com/sakimidare/hilite.git
 cd hilite
 cargo build --release
-
----
+```
 
 ## 使用方法
 
 高亮显示标准输入：
+```bash
 cat example.c | hilite --config rules.yaml
+```
+
 
 高亮显示文件：
+```bash
 hilite --config rules.yaml --file example.c
+```
 
 忽略大小写：
+```bash
 hilite --config rules.yaml --ignore-case < input.txt
+```
 
 如果标准输入是一个终端（TTY），hilite 会持续等待输入直到接收到 EOF（文件结束符）。
 
@@ -48,6 +53,8 @@ hilite --config rules.yaml --ignore-case < input.txt
 配置文件使用 YAML 格式。
 
 ### 基本结构
+
+```yaml
 include:
   - common_optional.yaml
 
@@ -58,6 +65,7 @@ rules:
   - keyword: "//.*|/\\*.*\\*/"
     is_regex: true
     color: { r: 106, g: 153, b: 85 }
+```
 
 ### 规则字段说明
 - keyword: 要匹配的关键字或正则表达式。
