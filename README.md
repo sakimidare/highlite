@@ -17,6 +17,7 @@ for large files, streaming input, and Unix-style pipelines.
 - YAML configuration with optional recursive includes
 - Designed for streaming input (stdin, pipes, large files)
 - Minimal memory allocation during processing
+- Per-rule and global case-insensitive matching
 
 ---
 
@@ -41,19 +42,19 @@ cargo build --release
 Highlight stdin:
 
 ```bash
-cat example.c | highlite --config rules.yaml
+cat examples/logs/example_cpp.cpp | highlite --config examples/rules/cpp_rules.yaml
 ```
 
 Highlight a file:
 
 ```bash
-highlite --config rules.yaml --file example.c
+highlite --config examples/rules/log_rules.yaml --file examples/logs/example_log.log
 ```
 
-Ignore case:
+Force case-insensitive matching for all rules:
 
 ```bash
-highlite --config rules.yaml --ignore-case < input.txt
+highlite --config examples/rules/cpp_rules.yaml --ignore-case < examples/logs/example_cpp.cpp
 ```
 
 If stdin is a TTY, highlite will wait for input until EOF is received.
@@ -70,9 +71,11 @@ include:
 rules:
   - keyword: "TODO"
     color: { type: Yellow }
+    ignore_case: true
 
   - keyword: "//.*|/\\*.*\\*/"
     is_regex: true
+    ignore_case: false
     color: { r: 106, g: 153, b: 85 }
 ```
 
@@ -86,6 +89,13 @@ Each rule has the following fields:
 - `is_regex` (optional, default: `false`)
   Whether `keyword` should be treated as a regular expression.
 
+- `ignore_case` (optional, default: `false`)
+  Whether this rule should match text case-insensitively.
+
+  **Note**:
+  If the CLI flag `--ignore-case` is provided, all rules will be treated as
+  case-insensitive, regardless of this setting.
+- 
 - `color`
   The highlight color, either a preset name or an RGB value.
 
@@ -119,7 +129,7 @@ color: { r: 106, g: 153, b: 85 }
 
 ### Examples
 
-See `examples/cpp_example.yaml`.
+See `examples/rules`.
 
 
 ## Design
@@ -127,6 +137,8 @@ See `examples/cpp_example.yaml`.
 - All rules are merged into a single regular expression.
 
 - Each rule corresponds to a named capture group.
+
+- Case sensitivity is handled per rule using inline regex flags.
 
 - Highlighting is performed in a single pass per line.
 

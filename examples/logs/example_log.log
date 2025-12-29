@@ -1,0 +1,15 @@
+2025-03-21 10:15:42.123 [main] INFO  com.example.server.Startup - Server started successfully
+2025-03-21 10:15:42.456 [worker-1] DEBUG com.example.server.Config - Loaded config file "/etc/example/config.yaml"
+2025-03-21 10:15:43.001 [worker-2] TRACE com.example.server.Metrics - cpu=0.12 mem=128.5 disk=42
+
+2025-03-21 10:15:44 [thread-3] WARN  com.example.auth.Login - user=john_doe uid=1001 request_id=abc123
+2025-03-21 10:15:45 [thread-3] ERROR com.example.auth.Login - Invalid password for user=john_doe
+2025-03-21 10:15:46 [thread-3] CRITICAL com.example.auth.Login - Too many failed attempts, uid=1001
+
+2025-03-21 10:15:47 [main] INFO  com.example.api.Handler - GET /api/v1/users/1001
+2025-03-21 10:15:48 [main] ERROR com.example.api.Handler - Failed to open file "/var/log/app/error.log"
+
+2025-03-21T10:15:49.789Z [worker-4] INFO  com.example.db.Query - duration=12.34 rows=42
+2025-03-21T10:15:50.001Z [worker-4] FATAL com.example.db.Connection - pid=4321 Database connection lost
+
+2025-03-21 10:15:51 [main] DEBUG com.example.parser.JSON - Parsed string "hello \"world\"" successfully

@@ -7,6 +7,7 @@
 //! ## Features
 //!
 //! - Highlight fixed keywords or regular expressions
+//! - Per-rule and global case-insensitive matching
 //! - Support for preset ANSI colors and 24-bit RGB colors
 //! - Read from files or `stdin`
 //! - Efficient multi-pattern matching using a single compiled regex
@@ -19,8 +20,7 @@
 //! cat file.txt | highlite --config rules.yaml
 //! ```
 
-use anyhow::Context;
-use regex::{Regex, RegexBuilder};
+use regex::Regex;
 use std::fs;
 use std::io::{BufRead, BufReader, BufWriter, IsTerminal, Write};
 
@@ -37,7 +37,19 @@ pub mod rules {
     /// Each rule defines a keyword or pattern to match, along with the color
     /// used to render matched text.
     ///
+    /// # Case sensitivity
+    ///
+    /// By default, matching is case-sensitive.
+    /// If `ignore_case` is set to `true`, this rule will match text
+    /// case-insensitively.
+    ///
+    /// Note:
+    /// - If the CLI flag `--ignore-case` is provided, it overrides this
+    ///   setting and forces all rules to be case-insensitive.
+    ///
+    /// # YAML
     /// Rules are typically loaded from a YAML configuration file.
+    ///
     /// # Examples
     ///
     /// ```yaml
@@ -47,6 +59,7 @@ pub mod rules {
     ///     is_regex: false
     ///   - keyword: "//.*|/\\*.*\\*/"
     ///     is_regex: true
+    ///     ignore_case: false
     ///     color: { r: 106, g: 153, b: 85 }
     /// ```
     #[derive(Debug, Clone, Deserialize)]
@@ -55,6 +68,8 @@ pub mod rules {
         pub color: Color,
         #[serde(default)]
         pub is_regex: bool,
+        #[serde(default)]
+        pub ignore_case: bool,
     }
 
     /// A predefined ANSI color.
@@ -142,7 +157,8 @@ pub mod arg_parser {
                       Reads from stdin if no file is provided."
     )]
     pub struct CliArgs {
-        /// Perform case-insensitive matching.
+        /// Force to perform case-insensitive matching.
+        /// This overrides `ignore_case` settings in the configuration file.
         #[arg(short, long)]
         pub ignore_case: bool,
 
@@ -153,8 +169,8 @@ pub mod arg_parser {
 
         /// Path to the YAML configuration file.
         /// This option is required.
-        #[arg(short, long, help = "Path to the YAML config file (required)")]
-        pub config: Option<PathBuf>,
+        #[arg(short, long, required = true, help = "Path to the YAML config file (required)")]
+        pub config: PathBuf,
     }
 
     /// Deserialized representation of a configuration file.
@@ -262,6 +278,7 @@ pub mod arg_parser {
 ///         keyword: "error".into(),
 ///         color: Color::Preset(PresetColor::Red),
 ///         is_regex: false,
+///         ignore_case: false,
 ///     },
 /// ];
 ///
@@ -280,11 +297,14 @@ pub mod highlight {
     /// produced a match.
     pub struct HighlightingEngine {
         regex: crate::Regex,
+        cap_to_color: Vec<usize>,
         ansi_colors: Vec<String>,
     }
 
     impl HighlightingEngine {
         /// Creates a new highlighting engine from a list of rules.
+        /// with case-insensitive matching, regardless of their individual
+        /// `ignore_case` settings.
         ///
         /// All rules are compiled into a single regular expression to minimize
         /// matching overhead.
@@ -292,32 +312,64 @@ pub mod highlight {
         /// # Errors
         ///
         /// Returns an error if the combined regular expression fails to compile.
-        pub fn new(rules: &[crate::rules::Rule], ignore_case: bool) -> anyhow::Result<Self> {
+        pub fn new(
+            rules: &[crate::rules::Rule],
+            force_ignore_case: bool,
+        ) -> anyhow::Result<Self> {
+            use regex::RegexBuilder;
+
             let mut patterns = Vec::with_capacity(rules.len());
             let mut ansi_colors = Vec::with_capacity(rules.len());
 
+            // 1. 构造每条规则的正则片段
             for (i, rule) in rules.iter().enumerate() {
-                let pat = if rule.is_regex {
+                let base_pat = if rule.is_regex {
                     rule.keyword.clone()
                 } else {
                     regex::escape(&rule.keyword)
                 };
-                // 使用命名捕获组 rN 以便匹配后快速索引颜色
-                patterns.push(format!(r"(?P<r{}>{})", i, pat));
+
+                let effective_ignore_case = force_ignore_case || rule.ignore_case;
+
+                let pat = if effective_ignore_case {
+                    // 使用 inline flag，做到 per-rule ignore_case
+                    format!("(?i:{})", base_pat)
+                } else {
+                    base_pat
+                };
+
+                // 命名捕获组 r{i}
+                patterns.push(format!("(?P<r{}>{})", i, pat));
                 ansi_colors.push(rule.color.to_ansi());
             }
 
-            let combined_re = crate::RegexBuilder::new(&patterns.join("|"))
-                .case_insensitive(ignore_case)
+            // 2. 编译合并后的正则
+            let regex = RegexBuilder::new(&patterns.join("|"))
                 .multi_line(true)
                 .dot_matches_new_line(false)
                 .build()?;
 
+            // 3. 建立 capture_index -> rule_index 的 O(1) 映射表
+            //
+            // cap_to_color[cap_idx] = rule_idx
+            // 未使用的 capture index 用 usize::MAX 标记
+            let mut cap_to_color = vec![usize::MAX; regex.captures_len()];
+
+            for (cap_idx, name) in regex.capture_names().enumerate() {
+                let Some(name) = name else { continue };
+                let Some(idx) = name.strip_prefix('r') else { continue };
+                let Ok(rule_idx) = idx.parse::<usize>() else { continue };
+
+                cap_to_color[cap_idx] = rule_idx;
+            }
+
             Ok(Self {
-                regex: combined_re,
+                regex,
+                cap_to_color,
                 ansi_colors,
             })
         }
+
 
         /// Renders a single line of input with highlighting applied.
         ///
@@ -326,13 +378,15 @@ pub mod highlight {
         ///
         /// # Examples
         ///
+        /// This example is case-insensitive:
         /// ```rust
         /// # use highlite::highlight::HighlightingEngine;
         /// # use highlite::rules::{Rule, Color, PresetColor};
         /// let rules = vec![Rule {
-        ///     keyword: "OK".into(),
+        ///     keyword: "Ok".into(),
         ///     color: Color::Preset(PresetColor::Green),
         ///     is_regex: false,
+        ///     ignore_case: true,
         /// }];
         ///
         /// let engine = HighlightingEngine::new(&rules, false).unwrap();
@@ -341,26 +395,46 @@ pub mod highlight {
         /// engine.render_line("Status: OK\n", &mut out);
         /// assert!(out.contains("\x1b[32mOK\x1b[0m"));
         /// ```
+        ///
+        /// But this is not:
+        /// ```rust
+        /// # use highlite::highlight::HighlightingEngine;
+        /// # use highlite::rules::{Rule, Color, PresetColor};
+        /// let rules = vec![Rule {
+        ///     keyword: "Ok".into(),
+        ///     color: Color::Preset(PresetColor::Green),
+        ///     is_regex: false,
+        ///     ignore_case: false,
+        /// }];
+        ///
+        /// let engine = HighlightingEngine::new(&rules, false).unwrap();
+        /// let mut out = String::new();
+        ///
+        /// engine.render_line("Status: OK\n", &mut out);
+        /// assert!(!out.contains("\x1b[32mOK\x1b[0m"));
+        /// ```
         pub fn render_line(&self, input: &str, output: &mut String) {
             output.clear();
             let mut last_match = 0;
 
             for caps in self.regex.captures_iter(input) {
-                let whole_match = caps.get(0).unwrap();
+                let m = caps.get(0).unwrap();
 
-                // 写入匹配项之前的文本
-                output.push_str(&input[last_match..whole_match.start()]);
+                output.push_str(&input[last_match..m.start()]);
 
-                // 寻找是哪个规则触发了匹配
-                for (i, color_code) in self.ansi_colors.iter().enumerate() {
-                    if let Some(m) = caps.name(&format!("r{}", i)) {
-                        output.push_str(color_code);
-                        output.push_str(m.as_str());
+                for (cap_idx, color_idx) in self.cap_to_color.iter().enumerate() {
+                    if *color_idx == usize::MAX {
+                        continue;
+                    }
+                    if let Some(sub) = caps.get(cap_idx) {
+                        output.push_str(&self.ansi_colors[*color_idx]);
+                        output.push_str(sub.as_str());
                         output.push_str("\x1b[0m");
                         break;
                     }
                 }
-                last_match = whole_match.end();
+
+                last_match = m.end();
             }
             // 写入剩余文本
             output.push_str(&input[last_match..]);
@@ -402,7 +476,7 @@ pub mod highlight {
 /// let cli_args = CliArgs {
 ///     ignore_case: false,
 ///     file: Some(String::from("path/to/file").into()),
-///     config: Some(String::from("path/to/config.yaml").into()),
+///     config: String::from("path/to/config.yaml").into(),
 /// };
 ///
 /// run(cli_args).unwrap();
@@ -410,9 +484,7 @@ pub mod highlight {
 ///
 /// This function flushes all output before returning.
 pub fn run(cli_args: arg_parser::CliArgs) -> anyhow::Result<()> {
-    let config_path = cli_args
-        .config
-        .context("Missing config file. Use --config <PATH>")?;
+    let config_path = cli_args.config;
     let raw_rules = arg_parser::load_rules_from_file(&config_path)?;
 
     // 1. 预编译引擎
@@ -462,4 +534,59 @@ fn process_stream<R: BufRead, W: Write>(
         line_buffer.clear();
     }
     Ok(())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use crate::highlight::HighlightingEngine;
+    use crate::rules::{Color, PresetColor, Rule};
+
+    #[test]
+    fn rule_level_ignore_case_works() {
+        let rules = vec![Rule {
+            keyword: "error".into(),
+            color: Color::Preset(PresetColor::Red),
+            is_regex: false,
+            ignore_case: true,
+        }];
+
+        let engine = HighlightingEngine::new(&rules, false).unwrap();
+        let mut out = String::new();
+
+        engine.render_line("ERROR\n", &mut out);
+        assert!(out.contains("\x1b[31mERROR\x1b[0m"));
+    }
+
+    #[test]
+    fn cli_ignore_case_overrides_rules() {
+        let rules = vec![Rule {
+            keyword: "error".into(),
+            color: Color::Preset(PresetColor::Red),
+            is_regex: false,
+            ignore_case: false,
+        }];
+
+        let engine = HighlightingEngine::new(&rules, true).unwrap();
+        let mut out = String::new();
+
+        engine.render_line("ERROR\n", &mut out);
+        assert!(out.contains("\x1b[31mERROR\x1b[0m"));
+    }
+
+    #[test]
+    fn case_sensitive_rule_does_not_match() {
+        let rules = vec![Rule {
+            keyword: "error".into(),
+            color: Color::Preset(PresetColor::Red),
+            is_regex: false,
+            ignore_case: false,
+        }];
+
+        let engine = HighlightingEngine::new(&rules, false).unwrap();
+        let mut out = String::new();
+
+        engine.render_line("ERROR\n", &mut out);
+        assert!(!out.contains("\x1b[31m"));
+    }
 }

@@ -1,0 +1,72 @@
+rules:
+  # ===== Log levels =====
+  - keyword: '\b(FATAL|CRITICAL)\b'
+    is_regex: true
+    ignore_case: true
+    color: { r: 255, g: 0, b: 0 }      # Bright red
+
+  - keyword: '\bERROR\b'
+    is_regex: true
+    ignore_case: true
+    color: { type: Red }
+
+  - keyword: '\bWARN(ING)?\b'
+    is_regex: true
+    ignore_case: true
+    color: { type: Yellow }
+
+  - keyword: '\bINFO\b'
+    is_regex: true
+    ignore_case: true
+    color: { type: Green }
+
+  - keyword: '\bDEBUG\b'
+    is_regex: true
+    ignore_case: true
+    color: { type: Cyan }
+
+  - keyword: '\bTRACE\b'
+    is_regex: true
+    ignore_case: true
+    color: { r: 160, g: 160, b: 160 }  # Gray
+
+  # ===== Timestamps =====
+  - keyword: '\b\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d+)?\b'
+    is_regex: true
+    color: { r: 180, g: 180, b: 180 }
+
+  # ===== Thread / PID =====
+  - keyword: '\[(main|worker-\d+|thread-\d+)\]'
+    is_regex: true
+    ignore_case: true
+    color: { r: 140, g: 140, b: 255 }
+
+  - keyword: '\bpid=\d+\b'
+    is_regex: true
+    color: { r: 140, g: 140, b: 255 }
+
+  # ===== Source / Module =====
+  - keyword: '\b([A-Za-z_][\w$]*\.)+[A-Za-z_][\w$]*\b'
+    is_regex: true
+    color: { r: 86, g: 156, b: 214 }   # Blue (class / module)
+
+  # ===== Common fields =====
+  - keyword: '\b(user|uid|id|request_id|trace_id|span_id)=\S+\b'
+    is_regex: true
+    ignore_case: true
+    color: { r: 206, g: 145, b: 120 }
+
+  # ===== Numbers =====
+  - keyword: '\b\d+(\.\d+)?\b'
+    is_regex: true
+    color: { r: 181, g: 206, b: 168 }
+
+  # ===== File paths =====
+  - keyword: '(/[^ \t\n]+)+'
+    is_regex: true
+    color: { r: 152, g: 195, b: 121 }
+
+  # ===== Quoted strings =====
+  - keyword: '"([^"\\]|\\.)*"'
+    is_regex: true
+    color: { r: 214, g: 157, b: 133 }
