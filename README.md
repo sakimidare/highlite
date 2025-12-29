@@ -94,10 +94,20 @@ Each rule has the following fields:
 #### Preset colors
 ```yaml
 color: { type: Red }
+```
+```yaml
 color: { type: Yellow }
+```
+```yaml
 color: { type: Blue }
+```
+```yaml
 color: { type: Green }
+```
+```yaml
 color: { type: Cyan }
+```
+```yaml
 color: { type: Magenta }
 ```
 

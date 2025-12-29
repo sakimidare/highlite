@@ -66,19 +66,29 @@ rules:
 ```
 
 ### 规则字段说明
-- keyword: 要匹配的关键字或正则表达式。
-- is_regex（可选，默认值：false）: 是否将 keyword 视为正则表达式。
-- color: 高亮颜色，可以是预设名称或 RGB 数值。
+- `keyword`: 要匹配的关键字或正则表达式。
+- `is_regex`（可选，默认值：`false`）: 是否将 keyword 视为正则表达式。
+- `color`: 高亮颜色，可以是预设名称或 RGB 数值。
 
 ### 颜色设置
 
 #### 预设颜色
 ```yaml
 color: { type: Red }
+```
+```yaml
 color: { type: Yellow }
+```
+```yaml
 color: { type: Blue }
+```
+```yaml
 color: { type: Green }
+```
+```yaml
 color: { type: Cyan }
+```
+```yaml
 color: { type: Magenta }
 ```
 
@@ -95,7 +105,7 @@ color: { r: 106, g: 153, b: 85 }
 
 ## 局限性
 - 不支持嵌套高亮（例如：字符串内部的注释）。
-- 不支持跨行高亮（例如：多行注释 /* */）。
+- 不支持跨行高亮（例如：多行注释 `/* */`）。
 - 不具备语言感知的解析能力；匹配纯粹基于正则表达式。
 - ANSI 颜色输出需要兼容的终端支持。
 
