@@ -2,6 +2,7 @@
 name = "hilite"
 version = "0.1.0"
 edition = "2024"
+license = "GPL-3.0-only"
 
 [dependencies]
 clap = { version = "4.5.53", features = ["derive"] }
@@ -9,3 +10,4 @@ regex = "1.12.2"
 serde = { version = "1.0.228", features = ["derive"] }
 anyhow = "1.0.100"
 serde_yml = "0.0.12"
+

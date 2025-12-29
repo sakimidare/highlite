@@ -19,7 +19,12 @@ pub mod rules {
     #[derive(Debug, Copy, Clone, Deserialize)]
     #[serde(tag = "type", rename_all = "PascalCase", content = "value")]
     pub enum PresetColor {
-        Red, Yellow, Blue, Green, Cyan, Magenta,
+        Red,
+        Yellow,
+        Blue,
+        Green,
+        Cyan,
+        Magenta,
     }
 
     #[derive(Debug, Copy, Clone, Deserialize)]
@@ -60,10 +65,10 @@ pub mod arg_parser {
         #[arg(short, long)]
         pub ignore_case: bool,
 
-        #[arg(short, long)]
+        #[arg(short, long, help = "Path to the input file (defaults to stdin)")]
         pub file: Option<PathBuf>,
 
-        #[arg(short, long)]
+        #[arg(short, long, help = "Path to the YAML config file (required)")]
         pub config: Option<PathBuf>,
     }
 
@@ -78,10 +83,11 @@ pub mod arg_parser {
         load_rules_recursive(path.as_ref(), &mut loaded_files)
     }
 
-    fn load_rules_recursive(path: &Path, loaded: &mut HashSet<String>) -> anyhow::Result<Vec<Rule>> {
-        let canonical_path = fs::canonicalize(path)?
-            .to_string_lossy()
-            .to_string();
+    fn load_rules_recursive(
+        path: &Path,
+        loaded: &mut HashSet<String>,
+    ) -> anyhow::Result<Vec<Rule>> {
+        let canonical_path = fs::canonicalize(path)?.to_string_lossy().to_string();
 
         if !loaded.insert(canonical_path) {
             return Ok(vec![]);
@@ -108,74 +114,76 @@ pub mod arg_parser {
 }
 
 // --- Optimized Processor ---
-
-pub struct HighlightingEngine {
-    regex: Regex,
-    ansi_colors: Vec<String>,
-}
-
-impl HighlightingEngine {
-    pub fn new(rules: &[rules::Rule], ignore_case: bool) -> anyhow::Result<Self> {
-        let mut patterns = Vec::with_capacity(rules.len());
-        let mut ansi_colors = Vec::with_capacity(rules.len());
-
-        for (i, rule) in rules.iter().enumerate() {
-            let pat = if rule.is_regex {
-                rule.keyword.clone()
-            } else {
-                regex::escape(&rule.keyword)
-            };
-            // 使用命名捕获组 rN 以便匹配后快速索引颜色
-            patterns.push(format!(r"(?P<r{}>{})", i, pat));
-            ansi_colors.push(rule.color.to_ansi());
-        }
-
-        let combined_re = RegexBuilder::new(&patterns.join("|"))
-            .case_insensitive(ignore_case)
-            .multi_line(true)
-            .dot_matches_new_line(false)
-            .build()?;
-
-        Ok(Self {
-            regex: combined_re,
-            ansi_colors,
-        })
+pub mod highlight {
+    pub struct HighlightingEngine {
+        regex: crate::Regex,
+        ansi_colors: Vec<String>,
     }
 
-    pub fn render_line(&self, input: &str, output: &mut String) {
-        output.clear();
-        let mut last_match = 0;
+    impl HighlightingEngine {
+        pub fn new(rules: &[crate::rules::Rule], ignore_case: bool) -> anyhow::Result<Self> {
+            let mut patterns = Vec::with_capacity(rules.len());
+            let mut ansi_colors = Vec::with_capacity(rules.len());
 
-        for caps in self.regex.captures_iter(input) {
-            let whole_match = caps.get(0).unwrap();
-
-            // 写入匹配项之前的文本
-            output.push_str(&input[last_match..whole_match.start()]);
-
-            // 寻找是哪个规则触发了匹配
-            for (i, color_code) in self.ansi_colors.iter().enumerate() {
-                if let Some(m) = caps.name(&format!("r{}", i)) {
-                    output.push_str(color_code);
-                    output.push_str(m.as_str());
-                    output.push_str("\x1b[0m");
-                    break;
-                }
+            for (i, rule) in rules.iter().enumerate() {
+                let pat = if rule.is_regex {
+                    rule.keyword.clone()
+                } else {
+                    regex::escape(&rule.keyword)
+                };
+                // 使用命名捕获组 rN 以便匹配后快速索引颜色
+                patterns.push(format!(r"(?P<r{}>{})", i, pat));
+                ansi_colors.push(rule.color.to_ansi());
             }
-            last_match = whole_match.end();
+
+            let combined_re = crate::RegexBuilder::new(&patterns.join("|"))
+                .case_insensitive(ignore_case)
+                .multi_line(true)
+                .dot_matches_new_line(false)
+                .build()?;
+
+            Ok(Self {
+                regex: combined_re,
+                ansi_colors,
+            })
         }
-        // 写入剩余文本
-        output.push_str(&input[last_match..]);
+
+        pub fn render_line(&self, input: &str, output: &mut String) {
+            output.clear();
+            let mut last_match = 0;
+
+            for caps in self.regex.captures_iter(input) {
+                let whole_match = caps.get(0).unwrap();
+
+                // 写入匹配项之前的文本
+                output.push_str(&input[last_match..whole_match.start()]);
+
+                // 寻找是哪个规则触发了匹配
+                for (i, color_code) in self.ansi_colors.iter().enumerate() {
+                    if let Some(m) = caps.name(&format!("r{}", i)) {
+                        output.push_str(color_code);
+                        output.push_str(m.as_str());
+                        output.push_str("\x1b[0m");
+                        break;
+                    }
+                }
+                last_match = whole_match.end();
+            }
+            // 写入剩余文本
+            output.push_str(&input[last_match..]);
+        }
     }
 }
-
 // --- Main Logic ---
 
 pub fn run(cli_args: arg_parser::CliArgs) -> anyhow::Result<()> {
-    let config_path = cli_args.config.context("Missing config file. Use --config <PATH>")?;
+    let config_path = cli_args
+        .config
+        .context("Missing config file. Use --config <PATH>")?;
     let raw_rules = arg_parser::load_rules_from_file(&config_path)?;
 
     // 1. 预编译引擎
-    let engine = HighlightingEngine::new(&raw_rules, cli_args.ignore_case)?;
+    let engine = highlight::HighlightingEngine::new(&raw_rules, cli_args.ignore_case)?;
 
     // 2. 准备带缓冲的输出
     let stdout = std::io::stdout();
@@ -198,7 +206,7 @@ pub fn run(cli_args: arg_parser::CliArgs) -> anyhow::Result<()> {
 
 fn process_stream<R: BufRead, W: Write>(
     mut reader: R,
-    engine: &HighlightingEngine,
+    engine: &highlight::HighlightingEngine,
     writer: &mut W,
 ) -> anyhow::Result<()> {
     let mut line_buffer = String::new();
