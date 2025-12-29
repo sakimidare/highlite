@@ -47,8 +47,6 @@ hilite --config rules.yaml --ignore-case < input.txt
 
 如果标准输入是一个终端（TTY），hilite 会持续等待输入直到接收到 EOF（文件结束符）。
 
----
-
 ## 配置
 配置文件使用 YAML 格式。
 
@@ -73,10 +71,21 @@ rules:
 - color: 高亮颜色，可以是预设名称或 RGB 数值。
 
 ### 颜色设置
-- 预设颜色: Red, Yellow, Blue, Green, Cyan, Magenta。
-- RGB 颜色示例: { r: 106, g: 153, b: 85 }
 
----
+#### 预设颜色
+```yaml
+color: { type: Red }
+color: { type: Yellow }
+color: { type: Blue }
+color: { type: Green }
+color: { type: Cyan }
+color: { type: Magenta }
+```
+
+#### RGB 颜色
+```yaml
+color: { r: 106, g: 153, b: 85 }
+```
 
 ## 设计原理
 - 所有规则会被合并为一个单一的正则表达式。
